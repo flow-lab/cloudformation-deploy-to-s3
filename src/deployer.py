@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import pathlib
 import shutil
+import pathspec
 
 s3 = boto3.resource('s3')
 
@@ -16,18 +17,17 @@ def resource_handler(event, context):
     target_bucket = event['ResourceProperties']['TargetBucket']
     lambda_src = os.getcwd()
     acl = event['ResourceProperties']['Acl']
-    cacheControl = 'max-age=' + \
-        event['ResourceProperties']['CacheControlMaxAge']
+    cacheControlPolicies = event['ResourceProperties']['CacheControlPolicies']
     print(event['RequestType'])
     if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
-      
+
       if 'Substitutions' in event['ResourceProperties'].keys():
         temp_dir = os.path.join(tempfile.mkdtemp(), context.aws_request_id)
         apply_substitutions(event['ResourceProperties']['Substitutions'], temp_dir)
         lambda_src = temp_dir
 
       print('uploading')
-      upload(lambda_src, target_bucket, acl, cacheControl)
+      upload(lambda_src, target_bucket, acl, cacheControlPolicies)
     else:
       print('ignoring')
 
@@ -41,21 +41,29 @@ def resource_handler(event, context):
   return event
 
 
-def upload(lambda_src, target_bucket, acl, cacheControl):
+def upload(lambda_src, target_bucket, acl, cacheControlPolicies):
   for folder, subs, files in os.walk(lambda_src):
     for filename in files:
         source_file_path = os.path.join(folder, filename)
         destination_s3_key = os.path.relpath(source_file_path, lambda_src)
         contentType, encoding = mimetypes.guess_type(source_file_path)
+        if contentType is None:
+          contentType = 'application/octet-stream'
         upload_file(source_file_path, target_bucket,
-                    destination_s3_key, s3, acl, cacheControl, contentType)
+                    destination_s3_key, s3, acl, cacheControlPolicies, contentType)
 
 
-def upload_file(source, bucket, key, s3lib, acl, cacheControl, contentType):
+def upload_file(source, bucket, key, s3lib, acl, cacheControlPolicies, contentType):
     print('uploading from {} {} {}'.format(source, bucket, key))
+    cacheControl = get_cache_control(key, cacheControlPolicies)
     s3lib.Object(bucket, key).put(ACL=acl, Body=open(source, 'rb'),
                                   CacheControl=cacheControl, ContentType=contentType)
 
+def get_cache_control(key, cacheControlPolicies):
+    for policy in cacheControlPolicies:
+      spec = pathspec.PathSpec.from_lines('gitwildmatch', policy['PathPattern'].split(','))
+      if spec.match_file(key):
+        return policy['CacheControl']
 
 def send_result(event):
   response_body = json.dumps({
