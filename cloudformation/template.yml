@@ -8,17 +8,16 @@ Parameters:
 
 Resources:
   S3DeploymentLayer:
-    Type: AWS::Serverless::LayerVersion
+    Type: AWS::Lambda::LayerVersion
     Properties:
       CompatibleRuntimes:
         - python3.6
       Description: S3 Deployment Layer
       LayerName: !Ref AWS::StackName
       LicenseInfo: MIT
-      ContentUri:
-        Bucket: !Ref DeploymentBucketName
-        Key: !Ref DeploymentKey
-      RetentionPolicy: Retain
+      Content:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref DeploymentKey
 
   DeploymentPermission:
     Type: AWS::Lambda::LayerVersionPermission
@@ -28,5 +27,5 @@ Resources:
       Principal: '*'
 
 Outputs:
-  Arn: 
+  Arn:
     Value: !Ref S3DeploymentLayer
