@@ -8,32 +8,38 @@ import tempfile
 import pathlib
 import shutil
 import pathspec
+import semver
 
 s3 = boto3.resource('s3')
 
 def resource_handler(event, context):
   print(event)
   try:
-    target_bucket = event['ResourceProperties']['TargetBucket']
-    lambda_src = os.getcwd()
+    dev_target_bucket = event['ResourceProperties']['DevTargetBucket']
+    prod_target_bucket = event['ResourceProperties']['ProdTargetBucket']
+
+    with open('cloudformation/git-tag') as f:
+        git_tag = f.readline()
+
+    try:
+      ver = semver.parse(git_tag)
+    except:
+      ver = False
+
+    build_src = os.path.join(os.getcwd(), 'build')
     acl = event['ResourceProperties']['Acl']
     cacheControlPolicies = event['ResourceProperties']['CacheControlPolicies']
     print(event['RequestType'])
     if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+      print('uploading dev')
+      upload(build_src, dev_target_bucket, acl, cacheControlPolicies)
 
-      if 'Substitutions' in event['ResourceProperties'].keys():
-        temp_dir = os.path.join(tempfile.mkdtemp(), context.aws_request_id)
-        apply_substitutions(event['ResourceProperties']['Substitutions'], temp_dir)
-        lambda_src = temp_dir
-
-      print('uploading')
-      upload(lambda_src, target_bucket, acl, cacheControlPolicies)
+      if ver:
+        print('uploading prod')
+        upload(build_src, prod_target_bucket, acl, cacheControlPolicies)
     else:
       print('ignoring')
 
-    if not lambda_src == os.getcwd():
-      print('removing temporary', lambda_src)
-      shutil.rmtree(lambda_src)
     send_result(event)
 
   except Exception as err:
@@ -41,11 +47,11 @@ def resource_handler(event, context):
   return event
 
 
-def upload(lambda_src, target_bucket, acl, cacheControlPolicies):
-  for folder, subs, files in os.walk(lambda_src):
+def upload(build_src, target_bucket, acl, cacheControlPolicies):
+  for folder, subs, files in os.walk(build_src):
     for filename in files:
         source_file_path = os.path.join(folder, filename)
-        destination_s3_key = os.path.relpath(source_file_path, lambda_src)
+        destination_s3_key = os.path.relpath(source_file_path, build_src)
         contentType, encoding = mimetypes.guess_type(source_file_path)
         if contentType is None:
           contentType = 'application/octet-stream'
@@ -94,36 +100,3 @@ def get_physical_resource_id(event):
     return event['PhysicalResourceId']
   else:
     return event['RequestId']
-
-def apply_substitutions(substitutions, temp_dir):
-  if not 'Values' in substitutions.keys():
-    raise ValueError('Substitutions must contain Values')
-
-  if not isinstance(substitutions['Values'], dict):
-    raise ValueError('Substitutions.Values must be an Object')
-
-  if len(substitutions['Values']) < 1:
-    raise ValueError('Substitutions.Values must not be empty')
-
-  if not 'FilePattern' in substitutions.keys():
-    raise ValueError('Substitutions must contain FilePattern')
-
-  if not isinstance(substitutions['FilePattern'], str):
-    raise ValueError('Substitutions.FilePattern must be a String')
-
-  if len(substitutions['FilePattern']) < 1:
-    raise ValueError('Substitutions.FilePattern must not be empty')
-
-  values = substitutions['Values']
-  file_pattern = substitutions['FilePattern']
-
-  subprocess.run(['cp', '-r', os.getcwd(), temp_dir])
-
-  for full_path in pathlib.Path(temp_dir).glob(file_pattern):
-    replace_with_command = lambda key: 's/\\${%s}/%s/g'% (sed_escape(key), sed_escape(values[key]))
-    replacements = list(map(replace_with_command, values.keys()))
-    sed_script = ';'.join(replacements)
-    subprocess.run(['sed', sed_script, '-i', str(full_path)], cwd=tempfile.gettempdir(), check=True)
-
-def sed_escape(text):
- return text.replace('/', '\\/')

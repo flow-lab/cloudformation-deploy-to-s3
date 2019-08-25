@@ -15,6 +15,7 @@ build/python/deployer.py: src/deployer.py build/python
 build/python/dependencies: build/python
 	pip install requests --target build/python
 	pip install pathspec --target build/python
+	pip install semver --target build/python
 
 build: build/python/deployer.py build/python/dependencies
 
