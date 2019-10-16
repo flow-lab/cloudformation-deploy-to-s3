@@ -21,6 +21,14 @@ build: build/python/deployer.py build/python/dependencies
 build/layer.zip:
 	cd build/ && zip -r layer.zip python
 
+deploy-s3:
+	aws cloudformation deploy \
+  		--template-file cloudformation/s3.yml \
+  		--stack-name $(DEPLOYMENT_BUCKET_NAME) \
+  		--capabilities CAPABILITY_NAMED_IAM \
+		--parameter-overrides DeploymentBucketName=$(DEPLOYMENT_BUCKET_NAME) \
+  		--profile $(PROFILE)
+
 deploy: cloudformation/template.yml build/layer.zip
 	aws --profile $(PROFILE) s3 cp build/layer.zip s3://$(DEPLOYMENT_BUCKET_NAME)/$(DEPLOYMENT_KEY)
 	aws --profile $(PROFILE) cloudformation deploy --template-file cloudformation/template.yml --stack-name $(STACK_NAME) --capabilities CAPABILITY_IAM --parameter-overrides DeploymentBucketName=$(DEPLOYMENT_BUCKET_NAME) DeploymentKey=$(DEPLOYMENT_KEY) LayerName=$(STACK_NAME)

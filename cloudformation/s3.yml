@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: S3 bucket for private artifacts
+
+Parameters:
+  DeploymentBucketName:
+    Type: String
+
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref DeploymentBucketName
+
+  BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 's3:GetObject'
+            Principal:
+              Service: serverlessrepo.amazonaws.com
+            Resource: !Sub 'arn:aws:s3:::${S3Bucket}/*'
+
+Outputs:
+  Arn:
+    Value: !GetAtt S3Bucket.Arn
+    Export:
+      Name: ArtifactBucketArn
