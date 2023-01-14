@@ -11,7 +11,7 @@ Resources:
     Type: AWS::Lambda::LayerVersion
     Properties:
       CompatibleRuntimes:
-        - python3.6
+        - python3.7
       Description: S3 Deployment Layer
       LayerName: !Ref AWS::StackName
       LicenseInfo: MIT
